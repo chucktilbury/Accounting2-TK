@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3
 import sys, traceback
 
 import tkinter as tk
