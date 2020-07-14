@@ -347,6 +347,15 @@ class Database(object):
         return self.db.execute(sql)
 
     @debugger
+    def delete_where(self, table, where):
+        '''
+        Delete rows that conform to the "where" clause.
+        '''
+        sql = 'DELETE FROM %s WHERE %s;' % (table, where)
+        self.logger.debug("SQL=%s" % (sql))
+        return self.db.execute(sql)
+
+    @debugger
     def if_rec_exists(self, table, column, value):
         '''
         Return True if there is a row that has the column with the value

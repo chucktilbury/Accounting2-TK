@@ -3,6 +3,7 @@ import sys
 
 import tkinter as tk
 import tkinter.ttk as ttk
+from tkinter.messagebox import showerror, showinfo, askyesno
 from utility import Logger, debugger
 from database import Database
 from forms import Form
@@ -156,8 +157,6 @@ class SetupInventoryForm(Form):
 
 class supplimental_form(Form):
 
-    INDIRECT_LABEL = Form.CUSTOM+1
-    COMMIT_BTN = Form.CUSTOM+2
 
     def __init__(self, notebook, index, table):
         super().__init__(notebook, index, table)
@@ -189,11 +188,12 @@ class supplimental_form(Form):
             self.col += 1
 
         def getter():
-            pass
+            return self.data.get_single_value(self.table, local_col, self.row_list[self.row_index])
 
-        def setter(s):
+
+        def setter(row_id):
             # The 's' parameter is what is read from the data base, which will be an int.
-            val = self.data.get_single_value(table, indir_col, s)
+            val = self.data.get_single_value(table, indir_col, row_id)
             value.set(str(val))
 
         def clear(self):
@@ -270,13 +270,13 @@ class supplimental_form(Form):
         self.row += 1
         self.col = 0
 
-        def getter(self):
+        def getter():
             return wid.get()
 
-        def setter(self, val=None):
-            wid.populate()
+        def setter(sale_id):
+            wid.set(sale_id)
 
-        def clear(self):
+        def clear():
             pass
 
         self.controls['Products'] = {'column': '',
@@ -284,7 +284,7 @@ class supplimental_form(Form):
                                'get':getter,
                                'set':lambda s: setter(s),
                                'clear':clear,
-                               'kind':self.CUSTOM}
+                               'kind':self.PRODUCT}
 
 class ProductLine(tk.Frame):
 
@@ -305,7 +305,6 @@ class ProductLine(tk.Frame):
         self.populate()
         self.set({'quan':quan, 'value':prod_idx})
 
-
     @debugger
     def get(self):
         '''
@@ -324,7 +323,7 @@ class ProductLine(tk.Frame):
     @debugger
     def clear(self):
         self.spin_value.set(str(1))
-        self.combo.current(str(-1))
+        self.combo.current(str(1))
 
     @debugger
     def populate(self):
@@ -351,35 +350,42 @@ class ProductWidget(tk.Frame):
         self.btn_frame.pack(side='bottom')
         self.ctl_frame.pack(side='top')
 
-        self.add_btn = tk.Button(self.btn_frame, text='Add', width=8)
-        self.sav_btn = tk.Button(self.btn_frame, text='Save', width=8)
-        self.rst_btn = tk.Button(self.btn_frame, text='Reset', width=8)
+        self.add_btn = tk.Button(self.btn_frame, text='Add', command=self.add_btn, width=8)
+        self.sav_btn = tk.Button(self.btn_frame, text='Save', command=self.save_btn, width=8)
+        self.rst_btn = tk.Button(self.btn_frame, text='Reset', command=self.reset_btn, width=8)
         self.add_btn.pack(side='left')
         self.sav_btn.pack(side='left')
         self.rst_btn.pack(side='left')
 
+        self.get_prod_list()
         self.populate()
+
+    @debugger
+    def get_prod_list(self):
+
+        self.products_list = self.data.get_row_list_by_col('ProductList', 'sale_record_ID', self.sale_id)
+        if not self.products_list is None:
+            for idx, item in enumerate(self.products_list):
+                line = ProductLine(self.ctl_frame, idx+1, item['inventory_ID'], item['quantity'])
+                self.line_widgets.append(line)
+        else:
+            line = ProductLine(self.ctl_frame, 1, 1, 1)
+            self.line_widgets.append(line)
 
     @debugger
     def populate(self):
         '''
         Read all of the product IDs defined in the database, and place them in the widget.
-        '''
         self.products_list = self.data.get_row_list_by_col('ProductList', 'sale_record_ID', self.sale_id)
-        if not self.products_list is None:
-            # add product line items
-            #self.logger.debug("products list = %s"%(str(self.products_list)))
-            for idx, item in enumerate(self.products_list):
-                line = ProductLine(self.ctl_frame, idx+1, item['inventory_ID'], item['quantity'])
-                line.grid(row=idx, column=0)
-                self.line_widgets.append(line)
-        else:
-            # no products, just add a single line
-            self.logger.debug("products list = no products associated with sale")
-            line = ProductLine(self.ctl_frame, 1, 1, 1)
-            line.grid(row=0, column=0)
-            del self.line_widgets # destroy the list
-            self.line_widgets = []
+        '''
+        for idx, item in enumerate(self.line_widgets):
+            if item.get()['quan'] > 0:
+                item.grid(row=idx, column=0)
+
+    @debugger
+    def forget(self):
+        for idx, item in enumerate(self.line_widgets):
+            item.grid_forget()
 
     @debugger
     def get(self):
@@ -391,12 +397,52 @@ class ProductWidget(tk.Frame):
             retv.append(item.get())
 
     @debugger
-    def set(self):
+    def set(self, sale_id):
+        self.sale_id = sale_id
+        self.forget()
+        del self.line_widgets
+        self.line_widgets = []
+        self.get_prod_list()
         self.populate()
 
     @debugger
     def clear(self):
         pass
+
+    @debugger
+    def add_btn(self):
+        self.forget()
+        line = ProductLine(self.ctl_frame, 1, 1, 1)
+        self.line_widgets.append(line)
+        self.populate()
+
+
+    @debugger
+    def save_btn(self):
+        # delete the currently existing records
+        self.data.delete_where('ProductList', 'sale_record_ID=%d'%(self.sale_id))
+        for item in self.line_widgets:
+            val = item.get()
+            if val['quan'] > 0:
+                self.data.insert_row('ProductList', {'sale_record_ID':self.sale_id,
+                                                    'inventory_ID':val['value'],
+                                                    'quantity':val['quan']})
+        # TODO: If there are 2 or more items with the same inventory ID, add the
+        # quantities together instead of saving two database rows.
+        self.data.commit()
+        self.forget()
+        self.populate()
+
+    @debugger
+    def reset_btn(self):
+        self.forget()
+        del self.line_widgets
+        self.line_widgets = []
+        line = ProductLine(self.ctl_frame, 1, 1, 1)
+        self.line_widgets.append(line)
+        self.populate()
+
+
 
 class SetupSalesForm(supplimental_form):
 
@@ -421,6 +467,24 @@ class SetupSalesForm(supplimental_form):
         self.add_button('Delete')
         self.add_commit_btn()
         # TODO override the load and save forms to support products widget
+
+    @debugger
+    def save_callback(self):
+        self.logger.debug('supplimental form save callback')
+        if askyesno('Save record?', 'Are you sure you want to save this?'):
+            self.commit_form()
+            self.controls['Products']['obj'].save_btn()
+            self.data.commit()
+
+    @debugger
+    def delete_callback(self):
+        self.logger.debug('supplimental form delete callback')
+        if askyesno('Delete record?', 'Are you sure you want to delete this?'):
+            self.data.delete_row(self.table, self.row_list[self.row_index])
+            self.data.delete_where('ProductList', 'sale_record_ID=%d'%(self.controls['Products']['obj'].sale_id))
+            self.row_list = self.data.get_id_list(self.table)
+            self.load_form()
+            self.data.commit()
 
 class SetupPurchaseForm(supplimental_form):
 

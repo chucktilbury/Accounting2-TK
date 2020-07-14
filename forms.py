@@ -1,6 +1,6 @@
 
 import tkinter as tk
-from tkinter.messagebox import showerror
+from tkinter.messagebox import showerror, showinfo, askyesno
 import tkinter.ttk as ttk
 from utility import debugger, Logger
 from database import Database
@@ -97,7 +97,10 @@ class Form: #(tk.Frame):
     COMBO = 3
     LABEL = 4
     BUTTON = 5
-    CUSTOM = 6
+    # used by the supplemental_form class in setup_forms.py
+    INDIRECT_LABEL = 6
+    COMMIT_BTN = 7
+    PRODUCT = 8
 
     def __init__(self, notebook, index, table, height=700, width=1000, span=4):
         '''
@@ -494,11 +497,18 @@ class Form: #(tk.Frame):
         vals = {}
         row_id = self.row_list[self.row_index]
         for item in self.controls:
-            vals[self.controls[item]['column']] = self.controls[item]['get']()
+            cval = self.controls[item]['get']()
+            col = self.controls[item]['column']
+            if not cval is None and col != '':
+                vals[col] = cval
         if self.data.if_rec_exists(self.table, 'ID', row_id):
-            self.data.update_row(table, vals, "ID=%d"%(row_id))
+            self.data.update_row(self.table, vals, "ID=%d"%(row_id))
         else:
-            self.data.insert_row(table, vals)
+            self.data.insert_row(self.table, vals)
+
+        self.data.commit()
+        self.row_list = self.data.get_id_list(self.table)
+
 
     @debugger
     def load_form(self):
@@ -514,6 +524,8 @@ class Form: #(tk.Frame):
                 if self.controls[item]['kind'] == Form.COMBO:
                     self.controls[item]['populate']()
                     self.controls[item]['set'](row[self.controls[item]['column']])
+                elif self.controls[item]['kind'] == Form.PRODUCT:
+                    self.controls[item]['set'](row_id)
                 else:
                     self.controls[item]['set'](row[self.controls[item]['column']])
         except IndexError as e:
@@ -532,14 +544,24 @@ class Form: #(tk.Frame):
         '''
         Default callback for the Prev button.
         '''
-        self.logger.debug("prev_callback")
+        self.row_index -= 1
+        if self.row_index < 0:
+            self.row_index = 0
+            showinfo('First Record', 'There is no previous record.')
+        else:
+            self.load_form()
 
     @debugger
     def next_callback(self):
         '''
         Default callback for the next button.
         '''
-        self.logger.debug("next_callback")
+        self.row_index += 1
+        if self.row_index > len(self.row_list)-1:
+            self.row_index = len(self.row_list)-1
+            showinfo('Last Record', 'There is no next record.')
+        else:
+            self.load_form()
 
     @debugger
     def select_callback(self):
@@ -555,14 +577,16 @@ class Form: #(tk.Frame):
         '''
         Default callback for the "New" button. This clears the form to default values.
         '''
-        self.logger.debug("new_callback")
+        for item in self.controls:
+            self.controls[item]['clear']()
 
     @debugger
     def save_callback(self):
         '''
         Default callback for the "Save" button. This writes the for to the database.
         '''
-        self.logger.debug("save_callback")
+        if askyesno('Save record?', 'Are you sure you want to save this?'):
+            self.commit_form()
 
     @debugger
     def delete_callback(self):
@@ -571,7 +595,9 @@ class Form: #(tk.Frame):
         database and displays the next one. If deleting the last row, then the first
         row is displayed.
         '''
-        self.logger.debug("delete_callback")
+        if askyesno('Delete record?', 'Are you sure you want to delete this?'):
+            self.data.delete_row(self.table, self.row_list[self.row_index])
+            self.data.commit()
 
     @debugger
     def set_layout_row(self, num):
@@ -600,5 +626,3 @@ class Form: #(tk.Frame):
         Return the layout column.
         '''
         return self.col
-
-
