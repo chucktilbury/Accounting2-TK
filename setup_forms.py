@@ -7,6 +7,215 @@ from tkinter.messagebox import showerror, showinfo, askyesno
 from utility import Logger, debugger
 from database import Database
 from forms import Form
+from custom_widgets import *
+from importer import ImportPayPal
+
+
+class supplimental_form(Form):
+
+
+    def __init__(self, notebook, index, table):
+        super().__init__(notebook, index, table)
+
+    @debugger
+    def add_indirect_label(self, name, local_col, table, indir_col, inc_row=True, **kwargs):
+        '''
+        This is stored as an ID in the database. This widget supports getting that ID and converting
+        it into the table entry that it represents.
+
+        name = The display name
+        local_col = The column where the ID is stored.
+        table = The table to find the displayed value in.
+        indir_col = The column in the forign table where the value is.
+        '''
+        lab = tk.Label(self.ctl_frame, text=name+':')
+
+        value = tk.StringVar(self.ctl_frame)
+        val = tk.Label(self.ctl_frame, textvariable=value, **kwargs)
+
+        lab.grid(row=self.row, column=self.col, padx=self.padx, pady=self.pady, sticky=tk.E)
+        self.col += 1
+        val.grid(row=self.row, column=self.col, padx=self.padx, pady=self.pady, sticky=tk.W)
+
+        if inc_row:
+            self.row += 1
+            self.col = 0
+        else:
+            self.col += 1
+
+        def getter():
+            return self.data.get_single_value(self.table, local_col, self.row_list[self.row_index])
+
+
+        def setter(row_id):
+            # The 's' parameter is what is read from the data base, which will be an int.
+            val = self.data.get_single_value(table, indir_col, row_id)
+            value.set(str(val))
+
+        def clear(self):
+            pass
+
+        self.controls[name] = {'column': local_col,
+                               'table': table,
+                               'ind_col': indir_col,
+                               'obj':lab,
+                               'get':getter,
+                               'set':lambda s: setter(s),
+                               'clear':clear,
+                               'kind':self.INDIRECT_LABEL}
+
+    @debugger
+    def add_commit_btn(self):
+        '''
+        This is a special button that controls the "commit" field in the record. If the 'committed' column
+        is not zero, then the button is disabled. When the button is pressed, then the 'committed' column
+        is updated to be 1 and the button is disabled. The button cannot be enabled without changing the
+        column in the database.
+
+        This control depends on having the fields in the database having the names that are hard-coded
+        into it.
+        '''
+        btn = tk.Button(self.btn_frame, text='Commit', command=self.commit_btn, width=self.btn_width)
+        #btn.pack(padx=self.btn_padx, pady=self.btn_pady, side=tk.TOP)
+        btn.grid(row = self.btn_row, column=0, padx=self.btn_padx, pady=self.btn_pady)
+        self.btn_row += 1
+
+        def getter():
+            pass
+
+        def setter(s):
+            # The 's' parameter is what is read from the data base, which will be an int.
+            val = self.data.get_single_value(self.table, 'committed', s)
+            if val:
+                btn.configure(state='disabled')
+
+        def clear(self):
+            pass
+
+        self.controls['Commit'] = {'column': 'committed',
+                               'obj':btn,
+                               'get':getter,
+                               'set':lambda s: setter(s),
+                               'clear':clear,
+                               'kind':self.COMMIT_BTN}
+
+    @debugger
+    def commit_btn(self):
+        '''
+        This is the commit button callback.
+        '''
+        self.logger.debug('Commit btn')
+        self.controls['Commit']['obj'].configure(state='disabled')
+        self.data.set_single_value(self.table, 'committed', self.row_list[self.row_index], 1)
+        self.data.commit()
+
+    @debugger
+    def add_products_widget(self):
+        '''
+        This is a compound widget that lists the products that are currently instantiated for the
+        sales field. This is stored using a "one to many" connector table. The products listed
+        must already exist in the database.
+        '''
+        if len(self.row_list) > 0:
+            sale_id = self.row_list[self.row_index]
+        else:
+            sale_id = -1
+
+        print("sale ID= ", sale_id)
+        lab = tk.Label(self.ctl_frame, text='Products:')
+        wid = ProductWidget(self.ctl_frame, sale_id, bd=1, relief=tk.RIDGE)
+
+        lab.grid(row=self.row, column=self.col, padx=self.padx, pady=self.pady, sticky=tk.E)
+        self.col += 1
+        wid.grid(row=self.row, column=self.col, padx=self.padx, pady=self.pady, sticky=tk.W)
+        self.row += 1
+        self.col = 0
+
+        def getter():
+            return wid.get()
+
+        def setter(sale_id):
+            wid.set(sale_id)
+
+        def clear():
+            pass
+
+        self.controls['Products'] = {'column': None,
+                               'obj':wid,
+                               'get':getter,
+                               'set':lambda s: setter(s),
+                               'clear':clear,
+                               'kind':self.PRODUCT}
+
+    @debugger
+    def add_dir_browser(self, **kw):
+        '''
+        Add a file system browser widget to the form.
+        '''
+        lab = tk.Label(self.ctl_frame, text='Select File:')
+        wid = DirectoryBrowser(self.ctl_frame, **kw)
+
+        lab.grid(row=self.row, column=self.col, padx=self.padx, pady=self.pady, sticky=tk.E)
+        self.col += 1
+        wid.grid(row=self.row, column=self.col, padx=self.padx, pady=self.pady, sticky=tk.W)
+        self.row += 1
+        self.col = 0
+
+        def getter():
+            return wid.file_name
+
+        def setter():
+            pass #wid.set(sale_id)
+
+        def clear():
+            pass
+
+        self.controls['dir_browser'] = {'column': None,
+                               'obj':wid,
+                               'get':getter,
+                               'set':setter,
+                               'clear':clear,
+                               'kind':self.DIR_BROWSER}
+
+    @debugger
+    def add_import_btn(self):
+        '''
+        '''
+        btn = tk.Button(self.btn_frame, text='Import', command=self.import_btn, width=self.btn_width)
+        #btn.pack(padx=self.btn_padx, pady=self.btn_pady, side=tk.TOP)
+        btn.grid(row = self.btn_row, column=0, padx=self.btn_padx, pady=self.btn_pady)
+        self.btn_row += 1
+
+        def getter():
+            pass
+
+        def setter():
+            pass
+
+        def clear():
+            pass
+
+        self.controls['Commit'] = {'column': 'committed',
+                               'obj':btn,
+                               'get':getter,
+                               'set':setter,
+                               'clear':clear,
+                               'kind':self.IMPORT_BTN}
+
+    @debugger
+    def import_btn(self):
+        '''
+        This is the import button callback.
+        '''
+        self.logger.debug('Import btn')
+        fname = self.controls['dir_browser']['get']()
+        if fname == '':
+            showerror('Error', 'Please select a file instead of a directory')
+        elif askyesno('Confirm Import', 'You are importing the file\n%s\nConfirm?'%(fname)):
+            self.logger.debug('Importing file: %s'%(fname))
+            importer = ImportPayPal(fname)
+            importer.import_all()
+
 
 class SetupBusinessForm(Form):
     '''
@@ -155,294 +364,6 @@ class SetupInventoryForm(Form):
         self.add_button('Save')
         self.add_button('Delete')
 
-class supplimental_form(Form):
-
-
-    def __init__(self, notebook, index, table):
-        super().__init__(notebook, index, table)
-
-    @debugger
-    def add_indirect_label(self, name, local_col, table, indir_col, inc_row=True, **kwargs):
-        '''
-        This is stored as an ID in the database. This widget supports getting that ID and converting
-        it into the table entry that it represents.
-
-        name = The display name
-        local_col = The column where the ID is stored.
-        table = The table to find the displayed value in.
-        indir_col = The column in the forign table where the value is.
-        '''
-        lab = tk.Label(self.ctl_frame, text=name+':')
-
-        value = tk.StringVar(self.ctl_frame)
-        val = tk.Label(self.ctl_frame, textvariable=value, **kwargs)
-
-        lab.grid(row=self.row, column=self.col, padx=self.padx, pady=self.pady, sticky=tk.E)
-        self.col += 1
-        val.grid(row=self.row, column=self.col, padx=self.padx, pady=self.pady, sticky=tk.W)
-
-        if inc_row:
-            self.row += 1
-            self.col = 0
-        else:
-            self.col += 1
-
-        def getter():
-            return self.data.get_single_value(self.table, local_col, self.row_list[self.row_index])
-
-
-        def setter(row_id):
-            # The 's' parameter is what is read from the data base, which will be an int.
-            val = self.data.get_single_value(table, indir_col, row_id)
-            value.set(str(val))
-
-        def clear(self):
-            pass
-
-        self.controls[name] = {'column': local_col,
-                               'table': table,
-                               'ind_col': indir_col,
-                               'obj':lab,
-                               'get':getter,
-                               'set':lambda s: setter(s),
-                               'clear':clear,
-                               'kind':self.INDIRECT_LABEL}
-
-    @debugger
-    def add_commit_btn(self):
-        '''
-        This is a special button that controls the "commit" field in the record. If the 'committed' column
-        is not zero, then the button is disabled. When the button is pressed, then the 'committed' column
-        is updated to be 1 and the button is disabled. The button cannot be enabled without changing the
-        column in the database.
-
-        This control depends on having the fields in the database having the names that are hard-coded
-        into it.
-        '''
-        btn = tk.Button(self.btn_frame, text='Commit', command=self.commit_btn, width=self.btn_width)
-        btn.pack(padx=self.btn_padx, pady=self.btn_pady, side=tk.TOP)
-        self.btn_col += 1
-
-        def getter():
-            pass
-
-        def setter(s):
-            # The 's' parameter is what is read from the data base, which will be an int.
-            val = self.data.get_single_value(self.table, 'committed', s)
-            if val:
-                btn.configure(state='disabled')
-
-        def clear(self):
-            pass
-
-        self.controls['Commit'] = {'column': 'committed',
-                               'obj':btn,
-                               'get':getter,
-                               'set':lambda s: setter(s),
-                               'clear':clear,
-                               'kind':self.COMMIT_BTN}
-
-    @debugger
-    def commit_btn(self):
-        '''
-        This is the commit button callback.
-        '''
-        self.logger.debug('Commit btn')
-        self.controls['Commit']['obj'].configure(state='disabled')
-        self.data.set_single_value(self.table, 'committed', self.row_list[self.row_index], 1)
-        self.data.commit()
-
-    @debugger
-    def add_products_widget(self):
-        '''
-        This is a compound widget that lists the products that are currently instantiated for the
-        sales field. This is stored using a "one to many" connector table. The products listed
-        must already exist in the database.
-        '''
-        sale_id = self.row_list[self.row_index]
-        print("sale ID= ", sale_id)
-        lab = tk.Label(self.ctl_frame, text='Products:')
-        wid = ProductWidget(self.ctl_frame, sale_id, bd=1, relief=tk.RIDGE)
-
-        lab.grid(row=self.row, column=self.col, padx=self.padx, pady=self.pady, sticky=tk.E)
-        self.col += 1
-        wid.grid(row=self.row, column=self.col, padx=self.padx, pady=self.pady, sticky=tk.W)
-        self.row += 1
-        self.col = 0
-
-        def getter():
-            return wid.get()
-
-        def setter(sale_id):
-            wid.set(sale_id)
-
-        def clear():
-            pass
-
-        self.controls['Products'] = {'column': '',
-                               'obj':wid,
-                               'get':getter,
-                               'set':lambda s: setter(s),
-                               'clear':clear,
-                               'kind':self.PRODUCT}
-
-class ProductLine(tk.Frame):
-
-    def __init__(self, owner, idx, prod_idx, quan, **kargs):
-        self.logger = Logger(self, Logger.DEBUG)
-        self.logger.debug(sys._getframe().f_code.co_name)
-        super().__init__(owner, **kargs)
-
-        self.data = Database.get_instance()
-
-        tk.Label(self, text=str(idx)).grid(row=0, column=0)
-        self.spin_value = tk.StringVar(self)
-        self.spin = tk.Spinbox(self, from_=1, to=99, width=3, textvariable=self.spin_value)
-        self.combo = ttk.Combobox(self, width=50, state='readonly')
-        self.spin.grid(row=0, column=1, padx=5, pady=5)
-        self.combo.grid(row=0, column=2, padx=5, pady=5)
-
-        self.populate()
-        self.set({'quan':quan, 'value':prod_idx})
-
-    @debugger
-    def get(self):
-        '''
-        Returns a dict with the data in it.
-        '''
-        return {'quan': int(self.spin_value.get()), 'value': self.combo.current()+1}
-
-    @debugger
-    def set(self, data):
-        '''
-        Accepts a dict with the data in it.
-        '''
-        self.spin_value.set(str(data['quan']))
-        self.combo.current(str(data['value']-1))
-
-    @debugger
-    def clear(self):
-        self.spin_value.set(str(1))
-        self.combo.current(str(1))
-
-    @debugger
-    def populate(self):
-        '''
-        Populate the combo box with the list of products.
-        '''
-        lst = self.data.populate_list('InventoryItem', 'name')
-        self.combo['values'] = lst
-
-class ProductWidget(tk.Frame):
-
-    def __init__(self, owner, sale_id, **kargs):
-        self.logger = Logger(self, Logger.DEBUG)
-        self.logger.debug(sys._getframe().f_code.co_name)
-        super().__init__(owner, **kargs)
-
-        self.data = Database.get_instance()
-        self.sale_id = sale_id
-        self.product_list = []
-        self.line_widgets = []
-
-        self.btn_frame = tk.Frame(self)
-        self.ctl_frame = tk.Frame(self)
-        self.btn_frame.pack(side='bottom')
-        self.ctl_frame.pack(side='top')
-
-        self.add_btn = tk.Button(self.btn_frame, text='Add', command=self.add_btn, width=8)
-        self.sav_btn = tk.Button(self.btn_frame, text='Save', command=self.save_btn, width=8)
-        self.rst_btn = tk.Button(self.btn_frame, text='Reset', command=self.reset_btn, width=8)
-        self.add_btn.pack(side='left')
-        self.sav_btn.pack(side='left')
-        self.rst_btn.pack(side='left')
-
-        self.get_prod_list()
-        self.populate()
-
-    @debugger
-    def get_prod_list(self):
-
-        self.products_list = self.data.get_row_list_by_col('ProductList', 'sale_record_ID', self.sale_id)
-        if not self.products_list is None:
-            for idx, item in enumerate(self.products_list):
-                line = ProductLine(self.ctl_frame, idx+1, item['inventory_ID'], item['quantity'])
-                self.line_widgets.append(line)
-        else:
-            line = ProductLine(self.ctl_frame, 1, 1, 1)
-            self.line_widgets.append(line)
-
-    @debugger
-    def populate(self):
-        '''
-        Read all of the product IDs defined in the database, and place them in the widget.
-        self.products_list = self.data.get_row_list_by_col('ProductList', 'sale_record_ID', self.sale_id)
-        '''
-        for idx, item in enumerate(self.line_widgets):
-            if item.get()['quan'] > 0:
-                item.grid(row=idx, column=0)
-
-    @debugger
-    def forget(self):
-        for idx, item in enumerate(self.line_widgets):
-            item.grid_forget()
-
-    @debugger
-    def get(self):
-        '''
-        Return the contents of the widget as an array of dictionaries.
-        '''
-        retv = []
-        for item in self.line_widgets:
-            retv.append(item.get())
-
-    @debugger
-    def set(self, sale_id):
-        self.sale_id = sale_id
-        self.forget()
-        del self.line_widgets
-        self.line_widgets = []
-        self.get_prod_list()
-        self.populate()
-
-    @debugger
-    def clear(self):
-        pass
-
-    @debugger
-    def add_btn(self):
-        self.forget()
-        line = ProductLine(self.ctl_frame, 1, 1, 1)
-        self.line_widgets.append(line)
-        self.populate()
-
-
-    @debugger
-    def save_btn(self):
-        # delete the currently existing records
-        self.data.delete_where('ProductList', 'sale_record_ID=%d'%(self.sale_id))
-        for item in self.line_widgets:
-            val = item.get()
-            if val['quan'] > 0:
-                self.data.insert_row('ProductList', {'sale_record_ID':self.sale_id,
-                                                    'inventory_ID':val['value'],
-                                                    'quantity':val['quan']})
-        # TODO: If there are 2 or more items with the same inventory ID, add the
-        # quantities together instead of saving two database rows.
-        self.data.commit()
-        self.forget()
-        self.populate()
-
-    @debugger
-    def reset_btn(self):
-        self.forget()
-        del self.line_widgets
-        self.line_widgets = []
-        line = ProductLine(self.ctl_frame, 1, 1, 1)
-        self.line_widgets.append(line)
-        self.populate()
-
-
 
 class SetupSalesForm(supplimental_form):
 
@@ -507,3 +428,14 @@ class SetupPurchaseForm(supplimental_form):
         self.add_button('Save')
         self.add_button('Delete')
         self.add_commit_btn()
+
+class SetupImportForm(supplimental_form):
+
+    def __init__(self, notebook):
+        self.logger = Logger(self, Logger.DEBUG)
+        self.logger.debug(sys._getframe().f_code.co_name)
+        super().__init__(notebook, notebook.IMPORT_FRAME, 'RawImport')
+
+        self.add_title('Import Setup Form')
+        self.add_dir_browser()
+        self.add_import_btn()

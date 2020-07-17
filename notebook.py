@@ -27,7 +27,7 @@ class Notebook(tk.Frame):
     frame itself.
     '''
 
-    def __init__(self, master, height=700, width=1000, *args, **kwargs):
+    def __init__(self, master, height=700, width=1000, **kwargs):
 
         super().__init__(master, **kwargs)
         self.logger = Logger(self, level=Logger.DEBUG)
@@ -39,8 +39,8 @@ class Notebook(tk.Frame):
         self.btn_frame = tk.LabelFrame(self.master, height=height, width=20, bd=1)
         self.wid_frame = tk.LabelFrame(self.master, height=height, width=width, bd=1)
 
-        self.btn_frame.grid(row=0, column=0, sticky=tk.W)
         self.wid_frame.grid(row=1, column=0)
+        self.btn_frame.grid(row=0, column=0, sticky=tk.W)
 
         self.frame_list = []
         self.frame_index = 0
@@ -73,7 +73,7 @@ class Notebook(tk.Frame):
         return self.frame_list[index]['frame']
 
     @debugger
-    def add_tab(self, title, *args, **kargs):
+    def add_tab(self, title):
         '''
         Add a new tab to the notebook.
         '''
@@ -96,3 +96,44 @@ class Notebook(tk.Frame):
         This callback will be called when the tab is selected.
         '''
         self.frame_list[index]['callback'] = callback
+
+class NotebookBase(Notebook):
+
+    def __init__(self, master, names=None, height=700, width=1000):
+        self.logger = Logger(self, level=Logger.DEBUG)
+        self.logger.debug("enter constructor")
+        super().__init__(master, height=height, width=width)
+
+        self.names = names
+        if not names is None:
+            for name in self.names:
+                self.add_tab(name)
+
+        self.form_class = []
+
+    @debugger
+    def get_name(self, index):
+        return self.names[index]
+
+    @debugger
+    def get_index(self, name):
+        for index, item in enumerate(self.names):
+            if item == name:
+                return index
+
+        return None
+
+    @debugger
+    def get_form_class(self, index):
+        return self.form_class[index]
+
+    @debugger
+    def set_form(self, index, form_class, **kargs):
+        idx = 0
+        if type(index) == type(''):
+            idx = self.get_name()
+        elif type(index) == type(0):
+            idx = index
+
+        self.form_class.append(form_class(self.get_frame(idx), **kargs))
+        return self.form_class[-1]

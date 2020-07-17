@@ -1,54 +1,10 @@
-import sys
-import tkinter as tk
-
-import tkinter.ttk as ttk
-from utility import debugger, Logger
-from notebook import Notebook
-from setup_forms import *
 
 
-class _notebook_base(Notebook):
+from notebook import NotebookBase
+from utility import Logger, debugger
+from main_forms import *
 
-    def __init__(self, master, names=None, height=700, width=1000):
-        self.logger = Logger(self, level=Logger.DEBUG)
-        self.logger.debug("enter constructor")
-        super().__init__(master, height=height, width=width)
-
-        self.names = names
-        if not names is None:
-            for name in self.names:
-                self.add_tab(name)
-
-        self.form_class = []
-
-    @debugger
-    def get_name(self, index):
-        return self.names[index]
-
-    @debugger
-    def get_index(self, name):
-        for index, item in enumerate(self.names):
-            if item == name:
-                return index
-
-        return None
-
-    @debugger
-    def get_form_class(self, index):
-        return self.form_class[index]
-
-    @debugger
-    def set_form(self, index, form_class, *args, **kargs):
-        idx = 0
-        if type(index) == type(''):
-            idx = self.get_name()
-        elif type(index) == type(0):
-            idx = index
-
-        self.form_class.append(form_class(self.get_frame(idx), *args, **kargs))
-        return self.form_class[-1]
-
-class MainNotebook(_notebook_base):
+class MainNotebook(NotebookBase):
 
     HOME_FRAME = 0
     SALES_FRAME = 1
@@ -59,35 +15,12 @@ class MainNotebook(_notebook_base):
     def __init__(self, master):
         self.logger = Logger(self, level=Logger.DEBUG)
         self.logger.debug(sys._getframe().f_code.co_name)
-        super().__init__(master)
+        super().__init__(master, ['Home', 'Sales', 'Purchase', 'Reports', 'Setup'])
 
-        self.add_tab('Home')
-        self.add_tab('Sales')
-        self.add_tab('Purchase')
-        self.add_tab('Reports')
-        self.add_tab('Setup')
+        MainHomeForm(self)
+        MainSalesForm(self)
+        MainPurchaseForm(self)
+        MainReportsForm(self)
+        MainSetupForm(self)
 
-class SetupNotebook(_notebook_base):
-
-    BUSINESS_FRAME = 0
-    CUSTOMERS_FRAME = 1
-    VENDORS_FRAME = 2
-    ACCOUNTS_FRAME = 3
-    INVENTORY_FRAME = 4
-    SALES_FRAME = 5
-    PURCHASE_FRAME = 6
-    IMPORT_FRAME = 7
-
-    def __init__(self, master):
-        self.logger = Logger(self, level=Logger.DEBUG)
-        self.logger.debug(sys._getframe().f_code.co_name)
-        super().__init__(master, ['Business', 'Customers', 'Vendors', 'Accounts',
-                                  'Inventory', 'Sales', 'Purchase', 'Import'])
-
-        SetupBusinessForm(self)
-        SetupCustomersForm(self)
-        SetupVendorsForm(self)
-        SetupAccountsForm(self)
-        SetupInventoryForm(self)
-        SetupSalesForm(self)
-        SetupPurchaseForm(self)
+        self.show_frame(self.HOME_FRAME)

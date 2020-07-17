@@ -1,8 +1,10 @@
 
 from tkinter import ttk
 import tkinter as tk
+from tkinter.messagebox import showerror
 import math
 from utility import Logger, debugger
+from database import Database
 
 
 # see: https://effbot.org/tkinterbook/tkinter-dialog-windows.htm
@@ -83,9 +85,11 @@ class BaseDialog(tk.Toplevel):
 
     #
     # command hooks
+    @debugger
     def validate(self):
         return True # override
 
+    @debugger
     def apply(self):
         pass # override
 
@@ -96,11 +100,12 @@ class SelectItem(BaseDialog):
     ID of the item in item_id.
     '''
 
-    def __init__(self, master, table, thing=None):
+    def __init__(self, master, table, column, thing=None):
 
         self.logger = Logger(self, level=Logger.DEBUG)
         self.logger.debug('SelectItem enter constructor')
         self.table = table
+        self.column = column
         if thing is None:
             self.thing = 'Item'
         else:
@@ -125,7 +130,7 @@ class SelectItem(BaseDialog):
 
         ######################
         # Populate the combo boxes
-        lst = self.data.populate_list(self.table, 'name')
+        lst = self.data.populate_list(self.table, self.column)
         lst.sort()
 
         ######################
@@ -147,7 +152,7 @@ class SelectItem(BaseDialog):
     @debugger
     def apply(self):
         ''' Populate the form with the selected data. '''
-        id = self.data.get_id_by_name(self.table, self.cbb.get())
+        id = self.data.get_id_by_name(self.table, self.column, self.cbb.get())
         self.item_id = id
 
 ###############################################################################

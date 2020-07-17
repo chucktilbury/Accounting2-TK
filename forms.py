@@ -4,6 +4,7 @@ from tkinter.messagebox import showerror, showinfo, askyesno
 import tkinter.ttk as ttk
 from utility import debugger, Logger
 from database import Database
+from dialogs import SelectItem
 
 class ScrollableFrame:
     '''
@@ -14,21 +15,22 @@ class ScrollableFrame:
     mouse wheel.
     '''
 
-    def __init__(self, container, height=700, width=800, *args, **kwargs):
+    def __init__(self, container, height=800, width=1000, *args, **kwargs):
 
         self.logger = Logger(self, level=Logger.INFO)
         self.logger.debug("enter constructor")
 
         self.canvas = tk.Canvas(container, height=height, width=width)
-        self.scrollwindow = tk.Frame(self.canvas)
+        self.canvas.grid(row=0, column=0, sticky='news')
 
-        self.canvas.create_window((0, 0), window=self.scrollwindow, anchor="nw")
-        self.canvas.pack(side="right", fill="both", expand=True)
-
-        scrollbar = tk.Scrollbar(container, orient="vertical", command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.scrollbar = tk.Scrollbar(container, orient="vertical", command=self.canvas.yview)
+        self.scrollbar.grid(row=0, column=1, sticky='nsw')
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
         self.canvas.configure(yscrollincrement='20')
-        scrollbar.pack(side="right", fill="y")
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+        self.scrollwindow = tk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.scrollwindow, anchor="nw")
 
         self.scrollwindow.bind("<Configure>", self.configure_window)
         self.scrollwindow.bind("<Enter>", self.enter_handler)
@@ -67,6 +69,7 @@ class ScrollableFrame:
         #print('leave', event.state)
         pass
 
+    @debugger
     def configure_window(self, event):
         #print('here', self.mark)
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
@@ -101,8 +104,10 @@ class Form: #(tk.Frame):
     INDIRECT_LABEL = 6
     COMMIT_BTN = 7
     PRODUCT = 8
+    DIR_BROWSER = 9
+    IMPORT_BTN = 10
 
-    def __init__(self, notebook, index, table, height=700, width=1000, span=4):
+    def __init__(self, notebook, index, table=None, height=700, width=1000, span=4):
         '''
         Create a form object. A form must be associated with exactly one database table. The form
         is filled in with exactly one row from the database table. If the form does not use all
@@ -132,8 +137,12 @@ class Form: #(tk.Frame):
         # database singleton object
         self.data = Database.get_instance()
         # the rows may not be sequentially numbered.
-        self.row_list = self.data.get_id_list(self.table)
-        self.row_index = 0
+        if not table is None:
+            self.row_list = self.data.get_id_list(self.table)
+            self.row_index = 0
+        else:
+            self.row_list = None
+            self.row_index = 0
 
         # dict of dicts that lists all of the controls by name.
         self.controls = {}
@@ -146,7 +155,7 @@ class Form: #(tk.Frame):
         # keep track of the current layout position.
         self.row = 0
         self.col = 0
-        self.btn_col = 0
+        self.btn_row = 0
         self.btn_width = 10
         self.padx = 5
         self.pady = 5
@@ -157,12 +166,16 @@ class Form: #(tk.Frame):
         self.text_height = 20 # default text height
 
         # create the frames
-        fr = tk.Frame(self.owner)
-        #self.ctl_frame = ScrollableFrame(fr, height, width).get_frame()
-        self.ctl_frame = ScrollableFrame(fr).get_frame()
-        self.btn_frame = tk.Frame(fr)
-        self.btn_frame.pack(side=tk.BOTTOM)
-        fr.grid()
+        #self.base_frame = tk.Frame(self.owner)
+        #self.ctl_frame = ScrollableFrame(self.base_frame, height, width).get_frame()
+        self.ctl_frame = ScrollableFrame(self.owner, height, width).get_frame()
+        #self.ctl_frame = ScrollableFrame(self.base_frame).get_frame()
+        #self.ctl_frame = tk.Frame(self.base_frame)
+        #self.btn_frame = tk.Frame(self.base_frame)
+        self.btn_frame = tk.Frame(self.owner)
+        self.btn_frame.grid(row=0, column=0, sticky='es')
+        self.ctl_frame.grid(row=0, column=1, sticky='wn')
+        #self.base_frame.grid(row=0, column=0)
 
         self.logger.debug("leave constructor")
 
@@ -405,6 +418,14 @@ class Form: #(tk.Frame):
                                'kind':Form.LABEL}
 
     @debugger
+    def add_notebook(self, nb_class):
+        '''
+        Add a notebook to the form.
+        '''
+        #nb_class(self.base_frame)
+        nb_class(self.owner)
+
+    @debugger
     def add_button(self, name, command=None, **kargs):
         '''
         Add a button to the button line on the form. The name is used as the label on the
@@ -430,8 +451,9 @@ class Form: #(tk.Frame):
                 raise "unknown name and no command to exec"
 
         btn = tk.Button(self.btn_frame, text=name, command=command, width=self.btn_width, **kargs)
-        btn.pack(padx=self.btn_padx, pady=self.btn_pady, side=tk.TOP)
-        self.btn_col += 1
+        #btn.pack(padx=self.btn_padx, pady=self.btn_pady, side=tk.TOP)
+        btn.grid(row = self.btn_row, column = 0, padx=self.btn_padx, pady=self.btn_pady)
+        self.btn_row += 1
 
     @debugger
     def get_form(self):
@@ -494,20 +516,23 @@ class Form: #(tk.Frame):
         visible for this to take place. Nothing is written to the database until this method
         is called. This assumes that all of the data is in the same table.
         '''
-        vals = {}
-        row_id = self.row_list[self.row_index]
-        for item in self.controls:
-            cval = self.controls[item]['get']()
-            col = self.controls[item]['column']
-            if not cval is None and col != '':
-                vals[col] = cval
-        if self.data.if_rec_exists(self.table, 'ID', row_id):
-            self.data.update_row(self.table, vals, "ID=%d"%(row_id))
-        else:
-            self.data.insert_row(self.table, vals)
+        if not self.row_list is None:
+            vals = {}
+            row_id = self.row_list[self.row_index]
+            for item in self.controls:
+                cval = self.controls[item]['get']()
+                col = self.controls[item]['column']
+                if not cval is None and col != '':
+                    vals[col] = cval
+            if self.data.if_rec_exists(self.table, 'ID', row_id):
+                self.data.update_row(self.table, vals, "ID=%d"%(row_id))
+            else:
+                self.data.insert_row(self.table, vals)
 
-        self.data.commit()
-        self.row_list = self.data.get_id_list(self.table)
+            self.data.commit()
+            self.row_list = self.data.get_id_list(self.table)
+        else:
+            self.logger.debug("Form has no table")
 
 
     @debugger
@@ -516,20 +541,25 @@ class Form: #(tk.Frame):
         Read the contents of the form from the database and place the values in the
         form controls. If the form is currently visible, then display the values.
         '''
-        try:
-            row_id = self.row_list[self.row_index]
-            row = self.data.get_row_by_id(self.table, row_id)
+        if not self.row_list is None:
+            try:
+                row_id = self.row_list[self.row_index]
+                row = self.data.get_row_by_id(self.table, row_id)
 
-            for item in self.controls:
-                if self.controls[item]['kind'] == Form.COMBO:
-                    self.controls[item]['populate']()
-                    self.controls[item]['set'](row[self.controls[item]['column']])
-                elif self.controls[item]['kind'] == Form.PRODUCT:
-                    self.controls[item]['set'](row_id)
-                else:
-                    self.controls[item]['set'](row[self.controls[item]['column']])
-        except IndexError as e:
-            showerror('No Records', 'No records exist for this form.\n\nThere are %d records in the table.'%(len(self.row_list)))
+                for item in self.controls:
+                    if self.controls[item]['kind'] == Form.COMBO:
+                        self.controls[item]['populate']()
+                        self.controls[item]['set'](row[self.controls[item]['column']])
+                    elif self.controls[item]['kind'] == Form.PRODUCT:
+                        self.controls[item]['set'](row_id)
+                    elif self.controls[item]['kind'] == Form.DIR_BROWSER:
+                        self.controls[item]['set']()
+                    elif self.controls[item]['kind'] == Form.IMPORT_BTN:
+                        self.controls[item]['set']()
+                    else:
+                        self.controls[item]['set'](row[self.controls[item]['column']])
+            except IndexError as e:
+                showerror('No Records', 'No records exist for this form.\n\nThere are %d records in the table.'%(len(self.row_list)))
 
 
     @debugger
@@ -544,24 +574,26 @@ class Form: #(tk.Frame):
         '''
         Default callback for the Prev button.
         '''
-        self.row_index -= 1
-        if self.row_index < 0:
-            self.row_index = 0
-            showinfo('First Record', 'There is no previous record.')
-        else:
-            self.load_form()
+        if not self.row_list is None:
+            self.row_index -= 1
+            if self.row_index < 0:
+                self.row_index = 0
+                showinfo('First Record', 'This is the first record.')
+            else:
+                self.load_form()
 
     @debugger
     def next_callback(self):
         '''
         Default callback for the next button.
         '''
-        self.row_index += 1
-        if self.row_index > len(self.row_list)-1:
-            self.row_index = len(self.row_list)-1
-            showinfo('Last Record', 'There is no next record.')
-        else:
-            self.load_form()
+        if not self.row_list is None:
+            self.row_index += 1
+            if self.row_index > len(self.row_list)-1:
+                self.row_index = len(self.row_list)-1
+                showinfo('Last Record', 'This is the last record.')
+            else:
+                self.load_form()
 
     @debugger
     def select_callback(self):
@@ -570,7 +602,11 @@ class Form: #(tk.Frame):
         of all of the rows that are defined in the table. If the name field does not exist,
         throw an exception.
         '''
-        self.logger.debug("select_callback")
+        if not self.row_list is None:
+            item = SelectItem(self.owner, self.table, 'name')
+            self.row_index = self.row_list.index(item.item_id)
+            self.load_form()
+
 
     @debugger
     def new_callback(self):
